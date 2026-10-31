@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#2d4a8a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Cuentas">
+<title>Cuentas de la misión</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💰</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="config.js"></script>
+<style>
+  :root{
+    --bg:#f6f5f1; --card:#ffffff; --ink:#1c1b18; --muted:#6d6a62; --line:#e6e3db;
+    --green:#1f7a4d; --green-bg:#e6f3ec; --red:#b3362b; --red-bg:#fbeae8;
+    --accent:#2d4a8a; --accent-bg:#e8edf8; --on-accent:#fff; --warn:#9a6a00; --warn-bg:#fdf3dc;
+    --r:14px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#141412; --card:#1f1e1b; --ink:#f1efe9; --muted:#a29e94; --line:#33312c;
+      --green:#5cc38e; --green-bg:#1b3327; --red:#f08377; --red-bg:#3a1f1c;
+      --accent:#8fa9ec; --accent-bg:#232c42; --on-accent:#10131c; --warn:#e7b549; --warn-bg:#3a3019; }
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,sans-serif;font-size:15px}
+  button,input,select,textarea{font:inherit;color:inherit}
+  a{color:var(--accent)}
+  .wrap{max-width:760px;margin:0 auto;padding:16px 16px 110px}
+  .hidden{display:none !important}
+  header{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+  header h1{font-size:20px;margin:4px 0 2px}
+  header .sub{color:var(--muted);font-size:13px}
+  .hbtns{display:flex;gap:4px;flex:none}
+  .iconbtn{background:none;border:0;cursor:pointer;color:var(--muted);padding:6px 8px;border-radius:8px;font-size:14px}
+  .iconbtn:hover{background:var(--line)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+  .balance{margin-top:14px}
+  .balance .lbl{color:var(--muted);font-size:13px}
+  .balance .big{font-size:34px;font-weight:700;letter-spacing:-.5px;margin:2px 0 12px;font-variant-numeric:tabular-nums}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .pill{border-radius:12px;padding:10px 12px}
+  .pill.in{background:var(--green-bg);color:var(--green)}
+  .pill.out{background:var(--red-bg);color:var(--red)}
+  .pill .t{font-size:12px;opacity:.85}
+  .pill .v{font-weight:700;font-size:17px;font-variant-numeric:tabular-nums}
+  .budget{margin-top:12px;font-size:13px;color:var(--muted)}
+  .bar{height:8px;background:var(--line);border-radius:99px;overflow:hidden;margin-top:6px}
+  .bar>i{display:block;height:100%;background:var(--accent);border-radius:99px}
+  .bar.over>i{background:var(--red)}
+  .tabs{display:flex;gap:6px;margin:18px 0 12px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:4px}
+  .tabs button{flex:1;border:0;background:none;padding:9px;border-radius:9px;cursor:pointer;font-weight:600;color:var(--muted)}
+  .tabs button.on{background:var(--accent-bg);color:var(--accent)}
+  .badge{display:inline-block;min-width:18px;padding:0 5px;border-radius:99px;background:var(--red);color:#fff;font-size:11px;margin-left:4px}
+  .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  .filters input,.filters select{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:9px 11px}
+  .filters input{flex:1;min-width:160px}
+  .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .chip{border:1px solid var(--line);background:var(--card);border-radius:99px;padding:7px 12px;cursor:pointer;font-size:13px;font-weight:500}
+  .chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+  .day{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin:16px 4px 6px}
+  .list{display:flex;flex-direction:column;gap:6px}
+  .item{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;cursor:pointer;text-align:left;width:100%}
+  .item:hover{border-color:var(--muted)}
+  .thumb{width:46px;height:46px;border-radius:9px;flex:none;object-fit:cover;background:var(--line);display:grid;place-items:center;font-size:20px}
+  .item .mid{flex:1;min-width:0}
+  .item .d{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .item .m{font-size:12px;color:var(--muted);margin-top:2px}
+  .num{font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums}
+  .amt{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .amt.in{color:var(--green)} .amt.out{color:var(--red)}
+  .tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:99px;background:var(--warn-bg);color:var(--warn);margin-left:4px;font-weight:600}
+  .empty{text-align:center;color:var(--muted);padding:40px 16px}
+  .fab{position:fixed;right:20px;bottom:24px;background:var(--accent);color:var(--on-accent);border:0;border-radius:99px;padding:15px 22px;font-weight:700;font-size:16px;box-shadow:0 6px 20px rgba(0,0,0,.18);cursor:pointer}
+  .actions{display:flex;gap:8px;justify-content:flex-end;margin:10px 0 0;flex-wrap:wrap}
+  .btn{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:10px 14px;cursor:pointer;font-weight:600;text-decoration:none;display:inline-block}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+  .btn.danger{color:var(--red)}
+  .btn.block{width:100%}
+  .btn:disabled{opacity:.5;cursor:default}
+  .notice{font-size:13px;padding:10px 12px;border-radius:10px;background:var(--warn-bg);color:var(--warn);margin:12px 0}
+  .ok{background:var(--green-bg);color:var(--green)}
+  /* login */
+  .center{min-height:100vh;display:grid;place-items:center;padding:16px}
+  .login{width:100%;max-width:380px}
+  .login h1{margin:0 0 4px;font-size:22px}
+  .login p{color:var(--muted);margin:0 0 14px;font-size:14px}
+  .link{background:none;border:0;color:var(--accent);cursor:pointer;padding:0;font-weight:600}
+  /* dialogs */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;z-index:20}
+  @media (min-width:640px){.overlay{align-items:center}}
+  .sheet{background:var(--card);width:100%;max-width:560px;max-height:92vh;overflow:auto;border-radius:18px 18px 0 0;padding:18px}
+  @media (min-width:640px){.sheet{border-radius:18px}}
+  .sheet h2{margin:0 0 14px;font-size:18px}
+  .seg{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:var(--bg);padding:4px;border-radius:12px;margin-bottom:14px}
+  .seg button{border:0;background:none;padding:10px;border-radius:9px;font-weight:700;cursor:pointer;color:var(--muted)}
+  .seg button.on.out{background:var(--red-bg);color:var(--red)}
+  .seg button.on.in{background:var(--green-bg);color:var(--green)}
+  label.f{display:block;font-size:13px;font-weight:600;color:var(--muted);margin:10px 0 4px}
+  .inp{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 12px}
+  .inp.money{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .drop{border:2px dashed var(--line);border-radius:12px;padding:14px;text-align:center;color:var(--muted);cursor:pointer;display:block}
+  .drop img{max-width:100%;max-height:220px;border-radius:8px;display:block;margin:0 auto}
+  .numhint{font-size:13px;color:var(--muted);margin-top:6px}
+  .fotobox{border-radius:12px;overflow:hidden;margin:10px 0;border:1px solid var(--line)}
+  .fotobox img{width:100%;display:block;background:var(--line)}
+  .stampbar{background:#111;color:#fff;padding:9px 12px;font-weight:700;font-size:14px;display:flex;justify-content:space-between;gap:8px;font-variant-numeric:tabular-nums}
+  .kv{display:grid;grid-template-columns:110px 1fr;gap:6px 10px;font-size:14px;margin:8px 0}
+  .kv div:nth-child(odd){color:var(--muted)}
+  .sumrow{display:grid;grid-template-columns:130px 1fr auto;gap:10px;align-items:center;font-size:14px;margin:8px 0}
+  .sumrow .bar{margin:0}
+  .sec{margin-bottom:12px}
+  .sec h3{margin:0 0 8px;font-size:15px}
+  .member{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .member:last-child{border:0}
+  .member .who{flex:1;min-width:0}
+  .member .who b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .member .who span{font-size:12px;color:var(--muted)}
+  .member select{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px}
+  .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;z-index:40;max-width:90vw;text-align:center}
+</style>
+</head>
+<body>
+
+<!-- Falta configurar -->
+<div id="scrSetup" class="center hidden">
+  <div class="card login">
+    <h1>Falta un paso</h1>
+    <p>Abre el archivo <b>config.js</b> y pega la dirección y la llave de tu proyecto de Supabase. Las instrucciones están en LEEME.md.</p>
+  </div>
+</div>
+
+<!-- Login -->
+<div id="scrLogin" class="center hidden">
+  <form class="card login" id="loginForm">
+    <h1 id="lgTitle">Cuentas de la misión</h1>
+    <p id="lgSub">Entra con tu correo y contraseña</p>
+    <div id="lgNameBox" class="hidden">
+      <label class="f" for="lgName">Tu nombre</label>
+      <input class="inp" id="lgName" maxlength="60" autocomplete="name">
+    </div>
+    <label class="f" for="lgEmail">Correo</label>
+    <input class="inp" id="lgEmail" type="email" required autocomplete="email">
+    <div id="lgPassBox">
+      <label class="f" for="lgPass">Contraseña</label>
+      <input class="inp" id="lgPass" type="password" minlength="6" autocomplete="current-password">
+    </div>
+    <div id="lgMsg" class="notice hidden"></div>
+    <div class="actions"><button class="btn primary block" id="lgBtn" type="submit">Entrar</button></div>
+    <p style="margin:14px 0 0;text-align:center">
+      <button type="button" class="link" id="lgToggle">Crear cuenta</button> ·
+      <button type="button" class="link" id="lgForgot">Olvidé mi contraseña</button>
+    </p>
+  </form>
+</div>
+
+<!-- Pendiente de aprobación -->
+<div id="scrPend" class="center hidden">
+  <div class="card login">
+    <h1>Ya casi</h1>
+    <p>Tu cuenta <b id="pendEmail"></b> está creada. El administrador de la misión debe aprobarte para que puedas ver las cuentas.</p>
+    <div class="actions">
+      <button class="btn" id="pendOut">Salir</button>
+      <button class="btn primary" id="pendRetry">Ya me aprobaron</button>
+    </div>
+  </div>
+</div>
+
+<!-- App -->
+<div id="scrApp" class="hidden">
+<div class="wrap">
+  <header>
+    <div>
+      <h1 id="mNombre">Cuentas de la misión</h1>
+      <div class="sub" id="mSub"></div>
+    </div>
+    <div class="hbtns">
+      <button class="iconbtn hidden" id="btnConfig" title="Datos de la misión">⚙️</button>
+      <button class="iconbtn" id="btnOut" title="Salir">Salir</button>
+    </div>
+  </header>
+
+  <div id="status" class="notice hidden"></div>
+
+  <section class="card balance">
+    <div class="lbl">Saldo disponible</div>
+    <div class="big" id="saldo">$ 0</div>
+    <div class="row2">
+      <div class="pill in"><div class="t">Entradas</div><div class="v" id="totIn">$ 0</div></div>
+      <div class="pill out"><div class="t">Salidas</div><div class="v" id="totOut">$ 0</div></div>
+    </div>
+    <div class="budget hidden" id="budgetBox">
+      <div id="budgetTxt"></div>
+      <div class="bar" id="budgetBar"><i style="width:0"></i></div>
+    </div>
+  </section>
+
+  <div class="tabs">
+    <button class="on" data-tab="mov">Movimientos</button>
+    <button data-tab="res">Resumen</button>
+    <button data-tab="eq" class="hidden" id="tabEqBtn">Equipo</button>
+  </div>
+
+  <section id="tabMov">
+    <div class="filters">
+      <input id="q" type="search" placeholder="Buscar por N°, descripción o persona">
+      <select id="fCat"><option value="">Todas las categorías</option></select>
+      <div class="chips">
+        <button class="chip on" data-f="">Todos</button>
+        <button class="chip" data-f="ingreso">Entradas</button>
+        <button class="chip" data-f="gasto">Salidas</button>
+        <button class="chip" data-f="sin">Sin factura</button>
+      </div>
+    </div>
+    <div id="list"><div class="empty">Cargando...</div></div>
+  </section>
+
+  <section id="tabRes" class="hidden">
+    <div class="card sec">
+      <h3>Rendir cuentas</h3>
+      <p style="margin:0 0 6px;color:var(--muted);font-size:14px">Descarga una carpeta con el Excel y todas las facturas. Cada foto lleva su número y su valor marcados abajo, y el archivo se llama igual que el número del Excel.</p>
+      <div class="actions" style="justify-content:flex-start">
+        <button class="btn primary" id="btnZip">Descargar Excel + facturas (.zip)</button>
+        <button class="btn" id="btnCsv">Solo el Excel</button>
+      </div>
+      <div class="numhint" id="zipMsg"></div>
+    </div>
+    <div class="card sec"><h3>Gastos por categoría</h3><div id="resCat"></div></div>
+    <div class="card sec"><h3>Entradas por origen</h3><div id="resIn"></div></div>
+    <div class="card sec"><h3>Gastos por persona que pagó</h3><div id="resPer"></div></div>
+    <div class="card sec"><h3>Soportes</h3><div id="resSop"></div></div>
+  </section>
+
+  <section id="tabEq" class="hidden">
+    <div class="card sec">
+      <h3>Equipo</h3>
+      <p style="margin:0 0 6px;color:var(--muted);font-size:14px">Cuando alguien crea su cuenta queda pendiente. Aquí le das permiso.<br>
+      <b>Lector</b> solo ve. <b>Editor</b> registra gastos y facturas. <b>Admin</b> además aprueba gente.</p>
+      <div id="eqList"></div>
+    </div>
+  </section>
+</div>
+<button class="fab hidden" id="fab">+ Nuevo</button>
+</div>
+
+<!-- Formulario -->
+<div class="overlay hidden" id="dlgForm">
+  <form class="sheet" id="form" autocomplete="off">
+    <h2 id="formTitle">Nuevo movimiento</h2>
+    <div class="seg">
+      <button type="button" data-t="gasto" class="on out">Salida (gasto)</button>
+      <button type="button" data-t="ingreso" class="in">Entrada (ingreso)</button>
+    </div>
+
+    <label class="f" for="monto">Valor (COP)</label>
+    <input class="inp money" id="monto" inputmode="numeric" placeholder="$ 0" required>
+
+    <label class="f">Foto de la factura o comprobante</label>
+    <label class="drop" id="drop">
+      <input type="file" id="file" accept="image/*,application/pdf" hidden>
+      <div id="dropInner">Toca para tomar la foto o subir la captura</div>
+    </label>
+    <div class="numhint" id="numHint"></div>
+
+    <label class="f" for="desc">Descripción</label>
+    <input class="inp" id="desc" placeholder="Ej: Almuerzo equipo en Pereira" required maxlength="140">
+
+    <div class="grid2">
+      <div><label class="f" for="fecha">Fecha</label><input class="inp" type="date" id="fecha" required></div>
+      <div><label class="f" for="cat">Categoría</label><select class="inp" id="cat"></select></div>
+    </div>
+    <div class="grid2">
+      <div><label class="f" for="metodo">Medio de pago</label>
+        <select class="inp" id="metodo">
+          <option>Efectivo</option><option>Nequi</option><option>Daviplata</option><option>Transferencia</option><option>Tarjeta</option><option>Otro</option>
+        </select></div>
+      <div><label class="f" for="resp" id="respLbl">Quién pagó</label><input class="inp" id="resp" placeholder="Nombre" maxlength="60"></div>
+    </div>
+    <label class="f" for="nota">Nota (opcional)</label>
+    <textarea class="inp" id="nota" rows="2" maxlength="400" placeholder="Comercio, NIT, detalle..."></textarea>
+
+    <div class="actions">
+      <button type="button" class="btn" id="btnCancel">Cancelar</button>
+      <button type="submit" class="btn primary" id="btnSave">Guardar</button>
+    </div>
+  </form>
+</div>
+
+<!-- Detalle -->
+<div class="overlay hidden" id="dlgDet"><div class="sheet" id="det"></div></div>
+
+<!-- Config -->
+<div class="overlay hidden" id="dlgCfg">
+  <form class="sheet" id="cfgForm">
+    <h2>Datos de la misión</h2>
+    <label class="f" for="cNombre">Nombre</label>
+    <input class="inp" id="cNombre" maxlength="80" placeholder="Ej: Misión Pereira">
+    <label class="f" for="cPres">Presupuesto total (COP, opcional)</label>
+    <input class="inp" id="cPres" inputmode="numeric" placeholder="$ 0">
+    <div class="actions">
+      <button type="button" class="btn" id="cfgCancel">Cancelar</button>
+      <button type="submit" class="btn primary">Guardar</button>
+    </div>
+  </form>
+</div>
+
+<!-- Nueva contraseña -->
+<div class="overlay hidden" id="dlgPass">
+  <form class="sheet" id="passForm">
+    <h2>Escribe tu nueva contraseña</h2>
+    <input class="inp" id="newPass" type="password" minlength="6" required autocomplete="new-password">
+    <div class="actions"><button type="submit" class="btn primary">Guardar contraseña</button></div>
+  </form>
+</div>
+
+<script>
+/* ================= Constantes y utilidades ================= */
+const CATS = {
+  gasto: ["Transporte","Alimentación","Alojamiento","Materiales","Ayuda a familias","Salud y botiquín","Comunicaciones","Otros gastos"],
+  ingreso: ["Ofrendas","Donaciones","Aporte de participantes","Plan padrino","Iglesia","Otros ingresos"]
+};
+const ICON = {"Transporte":"🚌","Alimentación":"🍽️","Alojamiento":"🛏️","Materiales":"📦","Ayuda a familias":"🤝","Salud y botiquín":"🩹","Comunicaciones":"📱","Otros gastos":"🧾","Ofrendas":"🙏","Donaciones":"💝","Aporte de participantes":"👥","Plan padrino":"🏠","Iglesia":"⛪","Otros ingresos":"💵"};
+const BUCKET = "facturas";
+const fmt = new Intl.NumberFormat("es-CO",{style:"currency",currency:"COP",maximumFractionDigits:0});
+const fmtN = new Intl.NumberFormat("es-CO",{maximumFractionDigits:0});
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const parseMoney = s => Number(String(s).replace(/[^\d]/g,"")) || 0;
+const pad = n => String(n).padStart(4,"0");
+const today = () => { const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,10); };
+const fechaLarga = f => { try{ return new Date(f+"T12:00:00").toLocaleDateString("es-CO",{weekday:"long",day:"numeric",month:"long"}); }catch{ return f; } };
+const fechaCorta = f => { try{ return new Date(f+"T12:00:00").toLocaleDateString("es-CO",{day:"2-digit",month:"short",year:"numeric"}); }catch{ return f; } };
+const extFor = t => ({"image/jpeg":"jpg","image/png":"png","image/webp":"webp","image/gif":"gif","image/heic":"heic","application/pdf":"pdf"}[t] || "bin");
+const slug = s => String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^\w ]/g,"").trim().replace(/\s+/g,"-").slice(0,40);
+function toast(t){ const el=document.createElement("div"); el.className="toast"; el.textContent=t; document.body.appendChild(el); setTimeout(()=>el.remove(),3000); }
+function show(scr){ for(const s of ["scrSetup","scrLogin","scrPend","scrApp"]) $(s).classList.toggle("hidden", s!==scr); }
+function setStatus(t){ const s=$("status"); s.textContent=t||""; s.classList.toggle("hidden",!t); }
+function lsGet(k){ try{return localStorage.getItem("mision_"+k);}catch{return null;} }
+function lsSet(k,v){ try{localStorage.setItem("mision_"+k,v);}catch{} }
+
+/* ================= Estado ================= */
+const C = window.CONFIG || {};
+const configured = !!(C.SUPABASE_URL && C.SUPABASE_ANON_KEY && !C.SUPABASE_URL.includes("TU_PROYECTO"));
+let sb = null, me = null, rol = null, bootedFor = null, channel = null;
+let movs = [], config = {}, miembros = [];
+const urlCache = {};
+let filtro = {tipo:"", cat:"", q:""};
+let edit = null, formTipo = "gasto", fileBlob = null, fileName = "", fileRemoved = false;
+const canWrite = () => rol==="editor" || rol==="admin";
+const isAdmin = () => rol==="admin";
+
+/* ================= Login ================= */
+let lgMode = "login"; // login | signup | forgot
+function setLgMode(m){
+  lgMode=m; $("lgMsg").classList.add("hidden");
+  $("lgNameBox").classList.toggle("hidden", m!=="signup");
+  $("lgPassBox").classList.toggle("hidden", m==="forgot");
+  $("lgPass").required = m!=="forgot";
+  $("lgPass").autocomplete = m==="signup" ? "new-password" : "current-password";
+  $("lgSub").textContent = {login:"Entra con tu correo y contraseña", signup:"Crea tu cuenta. El administrador debe aprobarte.", forgot:"Te enviamos un correo para cambiar la contraseña"}[m];
+  $("lgBtn").textContent = {login:"Entrar", signup:"Crear cuenta", forgot:"Enviar correo"}[m];
+  $("lgToggle").textContent = m==="login" ? "Crear cuenta" : "Ya tengo cuenta";
+}
+function lgMsg(t, ok){ const e=$("lgMsg"); e.textContent=t; e.classList.toggle("ok",!!ok); e.classList.remove("hidden"); }
+$("lgToggle").onclick = () => setLgMode(lgMode==="login" ? "signup" : "login");
+$("lgForgot").onclick = () => setLgMode("forgot");
+$("loginForm").onsubmit = async e => {
+  e.preventDefault();
+  const email=$("lgEmail").value.trim(), password=$("lgPass").value, btn=$("lgBtn");
+  btn.disabled=true;
+  const redirect = location.origin + location.pathname;
+  try{
+    if(lgMode==="login"){
+      const {error} = await sb.auth.signInWithPassword({email,password});
+      if(error) lgMsg(/confirm/i.test(error.message) ? "Primero confirma tu correo con el enlace que te llegó." : "Correo o contraseña incorrectos.");
+    } else if(lgMode==="signup"){
+      const {data,error} = await sb.auth.signUp({email,password,options:{data:{nombre:$("lgName").value.trim()},emailRedirectTo:redirect}});
+      if(error) lgMsg(/registered|exists/i.test(error.message) ? "Ese correo ya tiene cuenta. Entra con tu contraseña." : "No se pudo crear la cuenta: "+error.message);
+      else if(!data.session) lgMsg("Listo. Revisa tu correo y toca el enlace para confirmar la cuenta.", true);
+    } else {
+      const {error} = await sb.auth.resetPasswordForEmail(email,{redirectTo:redirect});
+      lgMsg(error ? "No se pudo enviar el correo. Intenta en unos minutos." : "Te enviamos un correo con el enlace para cambiar la contraseña.", !error);
+    }
+  } finally { btn.disabled=false; }
+};
+$("passForm").onsubmit = async e => {
+  e.preventDefault();
+  const {error} = await sb.auth.updateUser({password:$("newPass").value});
+  if(error) toast("No se pudo cambiar la contraseña"); else { $("dlgPass").classList.add("hidden"); toast("Contraseña cambiada"); }
+};
+async function salir(){ await sb.auth.signOut(); }
+$("btnOut").onclick = salir; $("pendOut").onclick = salir;
+$("pendRetry").onclick = () => { bootedFor=null; boot(); };
+
+/* ================= Arranque ================= */
+async function boot(){
+  const {data:{session}} = await sb.auth.getSession();
+  if(!session){ bootedFor=null; me=null; stopRealtime(); setLgMode("login"); show("scrLogin"); return; }
+  if(bootedFor===session.user.id) return;
+  bootedFor = session.user.id; me = session.user;
+  const {data:m, error} = await sb.from("miembros").select("*").eq("user_id", me.id).maybeSingle();
+  if(error){ show("scrApp"); setStatus("No se pudo conectar con la base de datos. Revisa que corriste el schema.sql."); return; }
+  if(!m || m.rol==="pendiente"){ $("pendEmail").textContent=me.email; show("scrPend"); bootedFor=null; return; }
+  rol = m.rol;
+  $("mSub").textContent = `${m.nombre || me.email} · ${({lector:"Solo lectura",editor:"Editor",admin:"Administrador"})[rol]}`;
+  $("btnConfig").classList.toggle("hidden", !isAdmin());
+  $("tabEqBtn").classList.toggle("hidden", !isAdmin());
+  $("fab").classList.toggle("hidden", !canWrite());
+  show("scrApp");
+  await loadAll();
+  startRealtime();
+}
+
+let reloadTimer=null;
+function scheduleReload(){ clearTimeout(reloadTimer); reloadTimer=setTimeout(loadAll, 350); }
+function startRealtime(){
+  stopRealtime();
+  channel = sb.channel("cambios-mision")
+    .on("postgres_changes",{event:"*",schema:"public",table:"movimientos"},scheduleReload)
+    .on("postgres_changes",{event:"*",schema:"public",table:"config"},scheduleReload)
+    .subscribe();
+}
+function stopRealtime(){ if(channel){ sb.removeChannel(channel); channel=null; } }
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden && me && rol) scheduleReload(); });
+
+async function loadAll(){
+  const [r1, r2] = await Promise.all([
+    sb.from("movimientos").select("*").order("fecha",{ascending:false}).order("numero",{ascending:false}),
+    sb.from("config").select("*").eq("id",1).maybeSingle()
+  ]);
+  if(r1.error){ setStatus("No se pudieron cargar los movimientos. Revisa tu conexión."); return; }
+  setStatus("");
+  movs = r1.data || [];
+  config = r2.data || {};
+  await signUrls(movs.filter(m=>m.foto_path && !urlCache[m.foto_path]).map(m=>m.foto_path));
+  renderAll();
+  if(isAdmin()) loadMiembros();
+}
+async function signUrls(paths){
+  if(!paths.length) return;
+  const {data} = await sb.storage.from(BUCKET).createSignedUrls(paths, 60*60*12);
+  (data||[]).forEach(d=>{ if(d.signedUrl) urlCache[d.path]=d.signedUrl; });
+}
+
+/* ================= Render ================= */
+function totals(){ let i=0,o=0; for(const m of movs){ if(m.tipo==="ingreso") i+=Number(m.monto); else o+=Number(m.monto); } return {i,o,s:i-o}; }
+function renderHeader(){
+  $("mNombre").textContent = config.nombre || "Cuentas de la misión";
+  document.title = config.nombre || "Cuentas de la misión";
+  const {i,o,s}=totals();
+  $("saldo").textContent=fmt.format(s); $("saldo").style.color = s<0 ? "var(--red)" : "";
+  $("totIn").textContent=fmt.format(i); $("totOut").textContent=fmt.format(o);
+  const p=Number(config.presupuesto)||0;
+  $("budgetBox").classList.toggle("hidden", !(p>0));
+  if(p>0){
+    const pct=Math.round(o/p*100);
+    $("budgetTxt").textContent=`Gastado ${fmt.format(o)} de ${fmt.format(p)} presupuestado (${pct}%)`;
+    $("budgetBar").classList.toggle("over",o>p);
+    $("budgetBar").firstElementChild.style.width=Math.min(100,pct)+"%";
+  }
+}
+function thumbHtml(m){
+  if(m.foto_path && (m.foto_tipo||"").startsWith("image/") && urlCache[m.foto_path])
+    return `<img class="thumb" loading="lazy" src="${esc(urlCache[m.foto_path])}" alt="">`;
+  return `<div class="thumb">${m.foto_path?"📄":(ICON[m.categoria]||"🧾")}</div>`;
+}
+function renderList(){
+  const q=filtro.q.trim().toLowerCase().replace(/^n[°º]?\s*/,"");
+  const rows=movs.filter(m=>{
+    if(filtro.tipo==="sin"){ if(m.tipo!=="gasto"||m.foto_path) return false; }
+    else if(filtro.tipo && m.tipo!==filtro.tipo) return false;
+    if(filtro.cat && m.categoria!==filtro.cat) return false;
+    if(!q) return true;
+    if(/^\d+$/.test(q)) return String(m.numero)===String(Number(q)) || pad(m.numero).includes(q);
+    return [m.descripcion,m.responsable,m.nota,m.categoria].join(" ").toLowerCase().includes(q);
+  });
+  const L=$("list");
+  if(!rows.length){
+    L.innerHTML = movs.length ? `<div class="empty">No hay movimientos con ese filtro.</div>`
+      : `<div class="empty">Todavía no hay movimientos.${canWrite()?"<br>Toca <b>+ Nuevo</b> para registrar el primero.":""}</div>`;
+    return;
+  }
+  let html="", day=null;
+  for(const m of rows){
+    if(m.fecha!==day){ if(day!==null) html+="</div>"; day=m.fecha; html+=`<div class="day">${esc(fechaLarga(day))}</div><div class="list">`; }
+    const isIn=m.tipo==="ingreso";
+    const sinSop = !isIn && !m.foto_path ? `<span class="tag">sin factura</span>` : "";
+    html+=`<button class="item" data-id="${esc(m.id)}">${thumbHtml(m)}<div class="mid">
+      <div class="d">${esc(m.descripcion||m.categoria)}</div>
+      <div class="m"><span class="num">N° ${pad(m.numero)}</span> · ${esc(m.categoria)}${m.responsable?" · "+esc(m.responsable):""}${sinSop}</div></div>
+      <div class="amt ${isIn?"in":"out"}">${isIn?"+":"−"}${fmt.format(m.monto)}</div></button>`;
+  }
+  L.innerHTML = html+"</div>";
+}
+function bars(map,total,color){
+  const ent=Object.entries(map).sort((a,b)=>b[1]-a[1]);
+  if(!ent.length) return `<div class="empty" style="padding:12px">Sin datos todavía</div>`;
+  return ent.map(([k,v])=>`<div class="sumrow"><div>${ICON[k]?ICON[k]+" ":""}${esc(k)}</div>
+    <div class="bar"><i style="width:${total?Math.round(v/total*100):0}%;${color?`background:var(${color})`:""}"></i></div>
+    <div class="amt">${fmt.format(v)}</div></div>`).join("");
+}
+function renderResumen(){
+  const cat={}, inn={}, per={}; let o=0,i=0,sin=0,sinV=0,con=0, sinNums=[];
+  for(const m of movs){
+    const v=Number(m.monto);
+    if(m.tipo==="ingreso"){ inn[m.categoria]=(inn[m.categoria]||0)+v; i+=v; }
+    else{ cat[m.categoria]=(cat[m.categoria]||0)+v; o+=v;
+      const p=m.responsable||"Sin nombre"; per[p]=(per[p]||0)+v;
+      if(m.foto_path) con++; else { sin++; sinV+=v; sinNums.push(pad(m.numero)); } }
+  }
+  $("resCat").innerHTML=bars(cat,o,"--red");
+  $("resIn").innerHTML=bars(inn,i,"--green");
+  $("resPer").innerHTML=bars(per,o);
+  $("resSop").innerHTML = (con+sin)===0 ? `<div class="empty" style="padding:12px">Sin gastos todavía</div>` :
+    `<div class="kv"><div>Con factura</div><div>${con} gastos</div><div>Sin factura</div><div>${sin} gastos por ${fmt.format(sinV)}</div></div>`+
+    (sin?`<div class="notice">Faltan facturas de: N° ${sinNums.sort().join(", N° ")}</div>`:"");
+}
+function renderAll(){ renderHeader(); renderList(); renderResumen(); }
+
+/* ================= Tabs y filtros ================= */
+document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll(".tabs button").forEach(x=>x.classList.toggle("on",x===b));
+  for(const [k,id] of [["mov","tabMov"],["res","tabRes"],["eq","tabEq"]]) $(id).classList.toggle("hidden", b.dataset.tab!==k);
+  if(b.dataset.tab==="eq") loadMiembros();
+});
+document.querySelectorAll(".chip").forEach(c=>c.onclick=()=>{
+  document.querySelectorAll(".chip").forEach(x=>x.classList.toggle("on",x===c));
+  filtro.tipo=c.dataset.f; renderList();
+});
+$("q").oninput=e=>{ filtro.q=e.target.value; renderList(); };
+(function(){
+  const s=$("fCat");
+  for(const [g,label] of [["gasto","Salidas"],["ingreso","Entradas"]]){
+    const og=document.createElement("optgroup"); og.label=label;
+    CATS[g].forEach(c=>{ const o=document.createElement("option"); o.value=c; o.textContent=c; og.appendChild(o); });
+    s.appendChild(og);
+  }
+  s.onchange=()=>{ filtro.cat=s.value; renderList(); };
+})();
+
+/* ================= Formulario ================= */
+function setTipo(t){
+  formTipo=t;
+  document.querySelectorAll(".seg button").forEach(b=>b.classList.toggle("on",b.dataset.t===t));
+  const sel=$("cat"); sel.innerHTML="";
+  CATS[t].forEach(c=>{ const o=document.createElement("option"); o.value=c; o.textContent=(ICON[c]||"")+" "+c; sel.appendChild(o); });
+  $("respLbl").textContent = t==="gasto" ? "Quién pagó" : "Quién entregó / de dónde";
+  updateNumHint();
+}
+document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>setTipo(b.dataset.t));
+for(const id of ["monto","cPres"]) $(id).addEventListener("input",e=>{ const v=parseMoney(e.target.value); e.target.value=v?fmt.format(v):""; if(id==="monto") updateNumHint(); });
+
+function updateNumHint(){
+  const v=parseMoney($("monto").value);
+  const hasFoto = fileBlob || (edit && edit.foto_path && !fileRemoved);
+  const num = edit ? `N° ${pad(edit.numero)}` : "el siguiente número";
+  $("numHint").innerHTML = hasFoto
+    ? `🔗 Esta foto queda guardada como <b>${num}</b>${v?` por <b>${fmt.format(v)}</b>`:""}.`
+    : (formTipo==="gasto" ? "Si no tienes la foto ahora, puedes agregarla después editando el movimiento." : "");
+}
+function showPreview(){
+  const D=$("dropInner");
+  const quitar = `<div style="margin-top:8px;font-size:13px">Toca para cambiar · <a href="#" id="rmFoto">Quitar foto</a></div>`;
+  if(fileBlob){
+    D.innerHTML = ((fileBlob.type||"").startsWith("image/") ? `<img src="${URL.createObjectURL(fileBlob)}" alt="Factura">` : `📄 ${esc(fileName||"Documento PDF")}`) + quitar;
+  } else if(edit && edit.foto_path && !fileRemoved){
+    const isImg=(edit.foto_tipo||"").startsWith("image/") && urlCache[edit.foto_path];
+    D.innerHTML = (isImg ? `<img src="${esc(urlCache[edit.foto_path])}" alt="Factura">` : "📄 Documento guardado") + quitar;
+  } else D.textContent = "Toca para tomar la foto o subir la captura";
+  const rm=document.getElementById("rmFoto");
+  if(rm) rm.onclick=ev=>{ ev.preventDefault(); ev.stopPropagation(); fileBlob=null; fileName=""; fileRemoved=true; $("file").value=""; showPreview(); };
+  updateNumHint();
+}
+async function compress(file){
+  if(!(file.type||"").startsWith("image/") || file.type==="image/gif") return file;
+  try{
+    const bmp = await createImageBitmap(file, {imageOrientation:"from-image"});
+    const sc=Math.min(1, 1600/Math.max(bmp.width,bmp.height));
+    const c=document.createElement("canvas"); c.width=Math.round(bmp.width*sc); c.height=Math.round(bmp.height*sc);
+    c.getContext("2d").drawImage(bmp,0,0,c.width,c.height);
+    const b=await new Promise(r=>c.toBlob(r,"image/jpeg",0.82));
+    return (b && (b.size<file.size || file.type==="image/heic")) ? b : file;
+  }catch{ return file; }
+}
+$("file").onchange=async e=>{
+  const f=e.target.files[0]; if(!f) return;
+  if(f.size>20*1024*1024){ toast("El archivo pesa más de 20 MB"); return; }
+  fileName=f.name; fileBlob=await compress(f); fileRemoved=false; showPreview();
+};
+
+function openForm(m){
+  edit = m || null; fileBlob=null; fileName=""; fileRemoved=false; $("file").value="";
+  $("formTitle").textContent = m ? `Editar N° ${pad(m.numero)}` : "Nuevo movimiento";
+  setTipo(m?.tipo||"gasto");
+  $("monto").value = m ? fmt.format(m.monto) : "";
+  $("desc").value = m?.descripcion||"";
+  $("fecha").value = m?.fecha||today();
+  if(m?.categoria && CATS[formTipo].includes(m.categoria)) $("cat").value=m.categoria;
+  $("metodo").value = m?.metodo||"Efectivo";
+  $("resp").value = m ? (m.responsable||"") : (lsGet("ultimoResp")||"");
+  $("nota").value = m?.nota||"";
+  showPreview();
+  $("dlgForm").classList.remove("hidden");
+}
+function closeForm(){ $("dlgForm").classList.add("hidden"); }
+$("btnCancel").onclick=closeForm;
+$("dlgForm").addEventListener("click",e=>{ if(e.target.id==="dlgForm") closeForm(); });
+$("fab").onclick=()=>openForm(null);
+
+$("form").onsubmit=async e=>{
+  e.preventDefault();
+  const monto=parseMoney($("monto").value);
+  if(!monto){ toast("Escribe el valor"); $("monto").focus(); return; }
+  const btn=$("btnSave"); btn.disabled=true; btn.textContent="Guardando...";
+  const row={ tipo:formTipo, monto, descripcion:$("desc").value.trim(), fecha:$("fecha").value||today(),
+    categoria:$("cat").value, metodo:$("metodo").value, responsable:$("resp").value.trim()||null, nota:$("nota").value.trim()||null };
+  let rec=null;
+  try{
+    if(edit){
+      row.editado=new Date().toISOString();
+      const r=await sb.from("movimientos").update(row).eq("id",edit.id).select().single();
+      if(r.error) throw r.error; rec=r.data;
+    } else {
+      const r=await sb.from("movimientos").insert(row).select().single();
+      if(r.error) throw r.error; rec=r.data;
+    }
+    if(row.responsable) lsSet("ultimoResp",row.responsable);
+  }catch(err){
+    console.error(err);
+    toast(/row-level|permission/i.test(err.message||"") ? "No tienes permiso para guardar" : "No se pudo guardar. Revisa tu conexión.");
+    btn.disabled=false; btn.textContent="Guardar"; return;
+  }
+  // Foto: se guarda con el número del movimiento (0007.jpg)
+  try{
+    const old = rec.foto_path;
+    if(fileBlob){
+      btn.textContent="Subiendo foto...";
+      const path = `${pad(rec.numero)}${old?"-"+Date.now().toString(36):""}.${extFor(fileBlob.type)}`;
+      const up=await sb.storage.from(BUCKET).upload(path, fileBlob, {contentType:fileBlob.type||"application/octet-stream", upsert:true});
+      if(up.error) throw up.error;
+      const r=await sb.from("movimientos").update({foto_path:path, foto_tipo:fileBlob.type}).eq("id",rec.id);
+      if(r.error) throw r.error;
+      if(old && old!==path) await sb.storage.from(BUCKET).remove([old]);
+    } else if(fileRemoved && old){
+      await sb.from("movimientos").update({foto_path:null, foto_tipo:null}).eq("id",rec.id);
+      await sb.storage.from(BUCKET).remove([old]);
+    }
+    closeForm(); toast(`N° ${pad(rec.numero)} guardado`);
+  }catch(err){
+    console.error(err);
+    closeForm(); toast(`N° ${pad(rec.numero)} se guardó, pero la foto no subió. Ábrelo y vuelve a subirla.`);
+  }finally{
+    btn.disabled=false; btn.textContent="Guardar"; loadAll();
+  }
+};
+
+/* ================= Detalle ================= */
+function openDetail(id){
+  const m=movs.find(x=>x.id===id); if(!m) return;
+  const isIn=m.tipo==="ingreso", url=urlCache[m.foto_path];
+  const isImg=(m.foto_tipo||"").startsWith("image/");
+  const stamp=`<div class="stampbar"><span>N° ${pad(m.numero)}</span><span>${isIn?"+":"−"}${fmt.format(m.monto)}</span></div>`;
+  const foto = m.foto_path
+    ? (isImg && url ? `<div class="fotobox"><a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}" alt="Factura N° ${pad(m.numero)}"></a>${stamp}</div>`
+       : `<div class="fotobox"><div style="padding:14px"><a class="btn" href="${esc(url||"#")}" target="_blank" rel="noopener">📄 Abrir documento</a></div>${stamp}</div>`)
+    : (isIn ? "" : `<div class="notice">El N° ${pad(m.numero)} no tiene factura.${canWrite()?" Toca Editar para agregarla.":""}</div>`);
+  $("det").innerHTML=`<div class="num">N° ${pad(m.numero)}</div>
+    <h2 style="margin-top:2px">${esc(m.descripcion||m.categoria)}</h2>
+    <div class="amt ${isIn?"in":"out"}" style="font-size:26px">${isIn?"+":"−"}${fmt.format(m.monto)}</div>
+    ${foto}
+    <div class="kv">
+      <div>Tipo</div><div>${isIn?"Entrada":"Salida"}</div>
+      <div>Fecha</div><div>${esc(fechaLarga(m.fecha))}</div>
+      <div>Categoría</div><div>${esc(m.categoria)}</div>
+      <div>Medio de pago</div><div>${esc(m.metodo||"")}</div>
+      <div>${isIn?"Origen":"Pagó"}</div><div>${esc(m.responsable||"—")}</div>
+      ${m.nota?`<div>Nota</div><div>${esc(m.nota)}</div>`:""}
+    </div>
+    <div id="delBox"></div>
+    <div class="actions">
+      ${canWrite()?`<button class="btn danger" id="dDel">Eliminar</button><button class="btn" id="dEdit">Editar</button>`:""}
+      <button class="btn primary" id="dClose">Cerrar</button>
+    </div>`;
+  $("dlgDet").classList.remove("hidden");
+  $("dClose").onclick=()=>$("dlgDet").classList.add("hidden");
+  if(!canWrite()) return;
+  $("dEdit").onclick=()=>{ $("dlgDet").classList.add("hidden"); openForm(m); };
+  $("dDel").onclick=()=>{
+    $("delBox").innerHTML=`<div class="notice">¿Eliminar el N° ${pad(m.numero)}${m.foto_path?" y su factura":""}? No se puede deshacer. El número no se vuelve a usar.
+      <div class="actions"><button class="btn" id="dNo">No</button><button class="btn danger" id="dYes">Sí, eliminar</button></div></div>`;
+    $("dNo").onclick=()=>$("delBox").innerHTML="";
+    $("dYes").onclick=async()=>{
+      $("dYes").disabled=true;
+      const r=await sb.from("movimientos").delete().eq("id",m.id);
+      if(r.error){ toast("No se pudo eliminar"); $("dYes").disabled=false; return; }
+      if(m.foto_path) await sb.storage.from(BUCKET).remove([m.foto_path]);
+      $("dlgDet").classList.add("hidden"); toast(`N° ${pad(m.numero)} eliminado`); loadAll();
+    };
+  };
+}
+$("list").addEventListener("click",e=>{ const b=e.target.closest(".item"); if(b) openDetail(b.dataset.id); });
+$("dlgDet").addEventListener("click",e=>{ if(e.target.id==="dlgDet") $("dlgDet").classList.add("hidden"); });
+
+/* ================= Config ================= */
+$("btnConfig").onclick=()=>{
+  $("cNombre").value=config.nombre||""; $("cPres").value=config.presupuesto?fmt.format(config.presupuesto):"";
+  $("dlgCfg").classList.remove("hidden");
+};
+$("cfgCancel").onclick=()=>$("dlgCfg").classList.add("hidden");
+$("cfgForm").onsubmit=async e=>{
+  e.preventDefault();
+  const r=await sb.from("config").update({nombre:$("cNombre").value.trim()||"Cuentas de la misión", presupuesto:parseMoney($("cPres").value)}).eq("id",1);
+  if(r.error) toast("No se pudo guardar"); else { $("dlgCfg").classList.add("hidden"); toast("Datos guardados"); loadAll(); }
+};
+
+/* ================= Equipo ================= */
+async function loadMiembros(){
+  if(!isAdmin()) return;
+  const {data,error}=await sb.from("miembros").select("*").order("creado");
+  if(error) return;
+  miembros=data||[];
+  const pend=miembros.filter(x=>x.rol==="pendiente").length;
+  $("tabEqBtn").innerHTML = "Equipo" + (pend?`<span class="badge">${pend}</span>`:"");
+  $("eqList").innerHTML = miembros.map(x=>`<div class="member"><div class="who"><b>${esc(x.nombre||x.email)}</b><span>${esc(x.email)}</span></div>
+    <select data-uid="${esc(x.user_id)}" ${x.user_id===me.id?"disabled title='No puedes cambiar tu propio rol'":""}>
+      ${["pendiente","lector","editor","admin"].map(r=>`<option value="${r}" ${x.rol===r?"selected":""}>${({pendiente:"Pendiente",lector:"Lector",editor:"Editor",admin:"Admin"})[r]}</option>`).join("")}
+    </select></div>`).join("") || `<div class="empty">Nadie más se ha registrado</div>`;
+}
+$("eqList").addEventListener("change",async e=>{
+  const s=e.target.closest("select[data-uid]"); if(!s) return;
+  s.disabled=true;
+  const r=await sb.from("miembros").update({rol:s.value}).eq("user_id",s.dataset.uid);
+  s.disabled=false;
+  toast(r.error?"No se pudo cambiar":"Permiso actualizado"); loadMiembros();
+});
+
+/* ================= Exportar ================= */
+function fotoFileName(m){
+  if(!m.foto_path) return "";
+  const ext=(m.foto_tipo||"").startsWith("image/") ? "jpg" : extFor(m.foto_tipo);
+  return `${pad(m.numero)} - ${m.tipo==="ingreso"?"entrada":"salida"} - ${fmtN.format(m.monto)} - ${slug(m.descripcion)||slug(m.categoria)}.${ext}`;
+}
+function buildCsv(){
+  const head=["N°","Fecha","Tipo","Categoría","Descripción","Valor","Medio de pago","Persona","Nota","Archivo de la factura"];
+  const q=v=>`"${String(v??"").replace(/"/g,'""')}"`;
+  const rows=[...movs].sort((a,b)=>a.numero-b.numero).map(m=>[
+    pad(m.numero), m.fecha, m.tipo==="ingreso"?"Entrada":"Salida", m.categoria, m.descripcion,
+    (m.tipo==="ingreso"?1:-1)*Number(m.monto), m.metodo, m.responsable, m.nota, fotoFileName(m)||(m.tipo==="gasto"?"SIN FACTURA":"")].map(q).join(";"));
+  const {i,o,s}=totals();
+  rows.push("", [q("Total entradas"),"","","","",i].join(";"), [q("Total salidas"),"","","","",-o].join(";"), [q("Saldo"),"","","","",s].join(";"));
+  return "﻿"+head.map(q).join(";")+"\n"+rows.join("\n");
+}
+function baseName(){ return (slug(config.nombre)||"cuentas-mision")+"-"+today(); }
+function saveBlob(blob,name){
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name;
+  document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },2000);
+}
+$("btnCsv").onclick=()=>saveBlob(new Blob([buildCsv()],{type:"text/csv;charset=utf-8"}), baseName()+".csv");
+
+// Marca el número y el valor debajo de la foto
+async function stampImage(blob, m){
+  const bmp=await createImageBitmap(blob,{imageOrientation:"from-image"});
+  const band=Math.max(56, Math.round(bmp.width*0.075));
+  const c=document.createElement("canvas"); c.width=bmp.width; c.height=bmp.height+band;
+  const x=c.getContext("2d");
+  x.fillStyle="#fff"; x.fillRect(0,0,c.width,c.height);
+  x.drawImage(bmp,0,0);
+  x.fillStyle="#111"; x.fillRect(0,bmp.height,c.width,band);
+  x.fillStyle="#fff"; x.textBaseline="middle";
+  x.font=`700 ${Math.round(band*0.42)}px Inter, Arial, sans-serif`;
+  const pd=Math.round(band*0.3), y=bmp.height+band/2;
+  const left=`N° ${pad(m.numero)}  ·  ${fechaCorta(m.fecha)}`;
+  const right=`${m.tipo==="ingreso"?"+":"−"}${fmt.format(m.monto)}`;
+  x.textAlign="left"; x.fillText(left,pd,y,c.width*0.55);
+  x.textAlign="right"; x.fillText(right,c.width-pd,y,c.width*0.4);
+  return await new Promise(r=>c.toBlob(r,"image/jpeg",0.88));
+}
+$("btnZip").onclick=async()=>{
+  const btn=$("btnZip"), msg=$("zipMsg");
+  if(typeof JSZip==="undefined"){ toast("No se pudo cargar el compresor. Revisa tu conexión."); return; }
+  btn.disabled=true;
+  try{
+    const zip=new JSZip(), base=baseName();
+    zip.file(base+".csv", buildCsv());
+    const dir=zip.folder("facturas");
+    const conFoto=[...movs].filter(m=>m.foto_path).sort((a,b)=>a.numero-b.numero);
+    let n=0, fallas=[];
+    for(const m of conFoto){
+      msg.textContent=`Preparando factura ${++n} de ${conFoto.length}...`;
+      const {data:blob,error}=await sb.storage.from(BUCKET).download(m.foto_path);
+      if(error||!blob){ fallas.push(pad(m.numero)); continue; }
+      let out=blob;
+      if((m.foto_tipo||"").startsWith("image/")){ try{ out=await stampImage(blob,m); }catch{} }
+      dir.file(fotoFileName(m), out);
+    }
+    msg.textContent="Comprimiendo...";
+    const z=await zip.generateAsync({type:"blob"});
+    saveBlob(z, base+".zip");
+    msg.textContent = fallas.length ? `Listo, pero no se pudieron bajar: N° ${fallas.join(", ")}` : `Listo: ${conFoto.length} ${conFoto.length===1?"factura":"facturas"} y el Excel.`;
+  }catch(e){ console.error(e); msg.textContent="No se pudo armar el archivo. Intenta otra vez."; }
+  finally{ btn.disabled=false; }
+};
+
+/* ================= Inicio ================= */
+if(!configured || typeof supabase==="undefined"){
+  show("scrSetup");
+} else {
+  sb = supabase.createClient(C.SUPABASE_URL, C.SUPABASE_ANON_KEY);
+  sb.auth.onAuthStateChange((event)=>{
+    if(event==="PASSWORD_RECOVERY") setTimeout(()=>$("dlgPass").classList.remove("hidden"),0);
+    if(["INITIAL_SESSION","SIGNED_IN","SIGNED_OUT"].includes(event)) setTimeout(boot,0);
+  });
+}
+</script>
+</body>
+</html>
