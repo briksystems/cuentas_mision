@@ -222,7 +222,7 @@
   <section id="tabRes" class="hidden">
     <div class="card sec">
       <h3>Rendir cuentas</h3>
-      <p style="margin:0 0 6px;color:var(--muted);font-size:14px">Descarga una carpeta con el Excel y todas las facturas. Cada foto lleva su número y su valor marcados abajo, y el archivo se llama igual que el número del Excel.</p>
+      <p style="margin:0 0 6px;color:var(--muted);font-size:14px">El Excel trae una hoja de Resumen con lo que había, lo que entró, lo que salió y lo que quedó, y una hoja de Movimientos con el saldo antes y después de cada uno. El .zip trae además todas las facturas. Cada foto lleva su número y valor marcados abajo, y desde el Excel puedes abrirla con un clic.</p>
       <div class="actions" style="justify-content:flex-start">
         <button class="btn primary" id="btnZip">Descargar Excel + facturas (.zip)</button>
         <button class="btn" id="btnCsv">Solo el Excel</button>
@@ -321,15 +321,16 @@
 /* ================= Constantes y utilidades ================= */
 const CATS = {
   gasto: ["Transporte","Alimentación","Alojamiento","Materiales","Ayuda a familias","Salud y botiquín","Comunicaciones","Otros gastos"],
-  ingreso: ["Ofrendas","Donaciones","Aporte de participantes","Plan padrino","Iglesia","Otros ingresos"]
+  ingreso: ["Saldo inicial","Ofrendas","Donaciones","Aporte de participantes","Plan padrino","Iglesia","Otros ingresos"]
 };
-const ICON = {"Transporte":"🚌","Alimentación":"🍽️","Alojamiento":"🛏️","Materiales":"📦","Ayuda a familias":"🤝","Salud y botiquín":"🩹","Comunicaciones":"📱","Otros gastos":"🧾","Ofrendas":"🙏","Donaciones":"💝","Aporte de participantes":"👥","Plan padrino":"🏠","Iglesia":"⛪","Otros ingresos":"💵"};
+const ICON = {"Saldo inicial":"🏦","Transporte":"🚌","Alimentación":"🍽️","Alojamiento":"🛏️","Materiales":"📦","Ayuda a familias":"🤝","Salud y botiquín":"🩹","Comunicaciones":"📱","Otros gastos":"🧾","Ofrendas":"🙏","Donaciones":"💝","Aporte de participantes":"👥","Plan padrino":"🏠","Iglesia":"⛪","Otros ingresos":"💵"};
 const BUCKET = "facturas";
 const fmt = new Intl.NumberFormat("es-CO",{style:"currency",currency:"COP",maximumFractionDigits:0});
 const fmtN = new Intl.NumberFormat("es-CO",{maximumFractionDigits:0});
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const parseMoney = s => Number(String(s).replace(/[^\d]/g,"")) || 0;
+// Quita centavos pegados como 45.000,50 para que no se conviertan en 4.500.050
+const parseMoney = s => Number(String(s).replace(/,\d{1,2}\s*$/,"").replace(/[^\d]/g,"")) || 0;
 const pad = n => String(n).padStart(4,"0");
 const today = () => { const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,10); };
 const fechaLarga = f => { try{ return new Date(f+"T12:00:00").toLocaleDateString("es-CO",{weekday:"long",day:"numeric",month:"long"}); }catch{ return f; } };
@@ -347,7 +348,7 @@ const C = window.CONFIG || {};
 const configured = !!(C.SUPABASE_URL && C.SUPABASE_ANON_KEY && !C.SUPABASE_URL.includes("TU_PROYECTO"));
 let sb = null, me = null, rol = null, bootedFor = null, channel = null;
 let movs = [], config = {}, miembros = [];
-const urlCache = {};
+const urlCache = {}; let urlCacheTime = Date.now();
 let filtro = {tipo:"", cat:"", q:""};
 let edit = null, formTipo = "gasto", fileBlob = null, fileName = "", fileRemoved = false;
 const canWrite = () => rol==="editor" || rol==="admin";
@@ -428,14 +429,23 @@ function stopRealtime(){ if(channel){ sb.removeChannel(channel); channel=null; }
 document.addEventListener("visibilitychange",()=>{ if(!document.hidden && me && rol) scheduleReload(); });
 
 async function loadAll(){
-  const [r1, r2] = await Promise.all([
-    sb.from("movimientos").select("*").order("fecha",{ascending:false}).order("numero",{ascending:false}),
-    sb.from("config").select("*").eq("id",1).maybeSingle()
-  ]);
-  if(r1.error){ setStatus("No se pudieron cargar los movimientos. Revisa tu conexión."); return; }
+  // Supabase entrega máximo 1000 filas por consulta. Se piden por bloques
+  // para que el saldo SIEMPRE sume todos los movimientos.
+  const todos=[]; let desde=0, err=null;
+  while(true){
+    const r=await sb.from("movimientos").select("*").order("numero",{ascending:true}).range(desde, desde+999);
+    if(r.error){ err=r.error; break; }
+    todos.push(...(r.data||[]));
+    if(!r.data || r.data.length<1000) break;
+    desde+=1000;
+  }
+  const r2 = await sb.from("config").select("*").eq("id",1).maybeSingle();
+  if(err){ setStatus("No se pudieron cargar todos los movimientos. El saldo puede estar incompleto. Recarga la página."); return; }
   setStatus("");
-  movs = r1.data || [];
+  movs = todos.sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||"") || b.numero-a.numero);
   config = r2.data || {};
+  // Los enlaces de las fotos vencen. Si pasaron más de 10 horas se piden de nuevo.
+  if(Date.now()-urlCacheTime > 10*60*60*1000){ for(const k in urlCache) delete urlCache[k]; urlCacheTime=Date.now(); }
   await signUrls(movs.filter(m=>m.foto_path && !urlCache[m.foto_path]).map(m=>m.foto_path));
   renderAll();
   if(isAdmin()) loadMiembros();
@@ -556,6 +566,8 @@ for(const id of ["monto","cPres"]) $(id).addEventListener("input",e=>{ const v=p
 
 function updateNumHint(){
   const v=parseMoney($("monto").value);
+  // El botón muestra el valor exacto que se va a guardar
+  const sb_=$("btnSave"); if(!sb_.disabled) sb_.textContent = v ? `Guardar ${formTipo==="gasto"?"salida":"entrada"} de ${fmt.format(v)}` : "Guardar";
   const hasFoto = fileBlob || (edit && edit.foto_path && !fileRemoved);
   const num = edit ? `N° ${pad(edit.numero)}` : "el siguiente número";
   $("numHint").innerHTML = hasFoto
@@ -632,7 +644,7 @@ $("form").onsubmit=async e=>{
   }catch(err){
     console.error(err);
     toast(/row-level|permission/i.test(err.message||"") ? "No tienes permiso para guardar" : "No se pudo guardar. Revisa tu conexión.");
-    btn.disabled=false; btn.textContent="Guardar"; return;
+    btn.disabled=false; updateNumHint(); return;
   }
   // Foto: se guarda con el número del movimiento (0007.jpg)
   try{
@@ -654,7 +666,7 @@ $("form").onsubmit=async e=>{
     console.error(err);
     closeForm(); toast(`N° ${pad(rec.numero)} se guardó, pero la foto no subió. Ábrelo y vuelve a subirla.`);
   }finally{
-    btn.disabled=false; btn.textContent="Guardar"; loadAll();
+    btn.disabled=false; updateNumHint(); loadAll();
   }
 };
 
@@ -744,22 +756,194 @@ function fotoFileName(m){
   const ext=(m.foto_tipo||"").startsWith("image/") ? "jpg" : extFor(m.foto_tipo);
   return `${pad(m.numero)} - ${m.tipo==="ingreso"?"entrada":"salida"} - ${fmtN.format(m.monto)} - ${slug(m.descripcion)||slug(m.categoria)}.${ext}`;
 }
-function buildCsv(){
-  const head=["N°","Fecha","Tipo","Categoría","Descripción","Valor","Medio de pago","Persona","Nota","Archivo de la factura"];
-  const q=v=>`"${String(v??"").replace(/"/g,'""')}"`;
-  const rows=[...movs].sort((a,b)=>a.numero-b.numero).map(m=>[
-    pad(m.numero), m.fecha, m.tipo==="ingreso"?"Entrada":"Salida", m.categoria, m.descripcion,
-    (m.tipo==="ingreso"?1:-1)*Number(m.monto), m.metodo, m.responsable, m.nota, fotoFileName(m)||(m.tipo==="gasto"?"SIN FACTURA":"")].map(q).join(";"));
-  const {i,o,s}=totals();
-  rows.push("", [q("Total entradas"),"","","","",i].join(";"), [q("Total salidas"),"","","","",-o].join(";"), [q("Saldo"),"","","","",s].join(";"));
-  return "﻿"+head.map(q).join(";")+"\n"+rows.join("\n");
+/* ---------- Excel (.xlsx) ---------- */
+function loadScript(src){ return new Promise((res,rej)=>{ const s=document.createElement("script"); s.src=src; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); }
+async function ensureExcel(){ if(!window.ExcelJS) await loadScript("https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"); }
+
+const XL = {
+  azul:"FF2D4A8A", azulClaro:"FFE8EDF8", verde:"FF1F7A4D", verdeClaro:"FFE6F3EC",
+  rojo:"FFB3362B", rojoClaro:"FFFBEAE8", amarillo:"FFFDF3DC", gris:"FFF4F3EF", linea:"FFD9D6CE",
+  dinero:'"$" #,##0;[Red]-"$" #,##0;"$" 0'
+};
+const borde = {top:{style:"thin",color:{argb:XL.linea}},bottom:{style:"thin",color:{argb:XL.linea}},left:{style:"thin",color:{argb:XL.linea}},right:{style:"thin",color:{argb:XL.linea}}};
+const relleno = argb => ({type:"pattern",pattern:"solid",fgColor:{argb}});
+const fechaXL = f => { const [y,m,d]=String(f).split("-").map(Number); return new Date(Date.UTC(y,m-1,d)); };
+
+async function buildXlsx(conLinks){
+  await ensureExcel();
+  const wb=new ExcelJS.Workbook();
+  wb.creator="Cuentas de la misión"; wb.created=new Date();
+  const nombre=config.nombre||"Cuentas de la misión";
+  const corte=new Date().toLocaleString("es-CO",{day:"2-digit",month:"long",year:"numeric",hour:"2-digit",minute:"2-digit"});
+
+  // Orden de caja: por fecha y luego por número, para que el saldo corra en orden
+  const rows=[...movs].sort((a,b)=>(a.fecha||"").localeCompare(b.fecha||"")||a.numero-b.numero);
+  const resumenWs=wb.addWorksheet("Resumen",{views:[{showGridLines:false}]});
+  const ws=wb.addWorksheet("Movimientos",{views:[{state:"frozen",ySplit:4,showGridLines:false}]});
+
+  /* ===== Hoja Movimientos ===== */
+  const cols=[
+    {h:"N°",w:9},{h:"Fecha",w:12},{h:"Tipo",w:10},{h:"Categoría",w:20},{h:"Descripción",w:34},
+    {h:"Saldo antes",w:15},{h:"Entrada",w:15},{h:"Salida",w:15},{h:"Saldo después",w:16},
+    {h:"Medio de pago",w:15},{h:"Quién pagó / origen",w:22},{h:"Observaciones",w:34},{h:"Factura",w:16}
+  ];
+  ws.columns=cols.map(c=>({width:c.w}));
+  ws.mergeCells("A1:M1"); ws.getCell("A1").value=nombre;
+  ws.getCell("A1").font={bold:true,size:16,color:{argb:XL.azul}};
+  ws.mergeCells("A2:M2"); ws.getCell("A2").value=`Libro de movimientos · Corte al ${corte}`;
+  ws.getCell("A2").font={size:11,color:{argb:"FF6D6A62"}};
+  ws.getRow(1).height=24;
+
+  const H=4, first=H+1, last=H+rows.length;
+  const head=ws.getRow(H);
+  head.values=cols.map(c=>c.h); head.height=22;
+  head.eachCell(c=>{ c.fill=relleno(XL.azul); c.font={bold:true,color:{argb:"FFFFFFFF"}}; c.alignment={vertical:"middle",horizontal:"center",wrapText:true}; c.border=borde; });
+
+  let saldo=0;
+  rows.forEach((m,idx)=>{
+    const r=first+idx, isIn=m.tipo==="ingreso", v=Number(m.monto), antes=saldo;
+    saldo += isIn ? v : -v;
+    const row=ws.getRow(r);
+    row.getCell(1).value=pad(m.numero);
+    row.getCell(2).value=fechaXL(m.fecha);
+    row.getCell(3).value=isIn?"Entrada":"Salida";
+    row.getCell(4).value=m.categoria;
+    row.getCell(5).value=m.descripcion||"";
+    row.getCell(6).value= idx===0 ? {formula:"0",result:0} : {formula:`I${r-1}`,result:antes};
+    row.getCell(7).value= isIn ? v : null;
+    row.getCell(8).value= isIn ? null : v;
+    row.getCell(9).value={formula:`F${r}+G${r}-H${r}`,result:saldo};
+    row.getCell(10).value=m.metodo||"";
+    row.getCell(11).value=m.responsable||"";
+    row.getCell(12).value=m.nota||"";
+    const fn=fotoFileName(m);
+    if(fn) row.getCell(13).value = conLinks ? {text:`Ver N° ${pad(m.numero)}`,hyperlink:"facturas/"+fn} : `Sí (N° ${pad(m.numero)})`;
+    else row.getCell(13).value = isIn ? "" : "SIN FACTURA";
+    const fondo = idx%2 ? XL.gris : "FFFFFFFF";
+    for(let c=1;c<=13;c++){
+      const cell=row.getCell(c);
+      cell.border=borde; cell.fill=relleno(fondo);
+      cell.alignment={vertical:"top",wrapText:c===5||c===12};
+    }
+    row.getCell(1).alignment={horizontal:"center",vertical:"top"};
+    row.getCell(2).numFmt="dd/mm/yyyy"; row.getCell(2).alignment={horizontal:"center",vertical:"top"};
+    for(const c of [6,7,8,9]) row.getCell(c).numFmt=XL.dinero;
+    row.getCell(3).font={bold:true,color:{argb:isIn?XL.verde:XL.rojo}};
+    row.getCell(7).font={color:{argb:XL.verde}};
+    row.getCell(8).font={color:{argb:XL.rojo}};
+    row.getCell(9).font={bold:true};
+    if(fn && conLinks) row.getCell(13).font={color:{argb:XL.azul},underline:true};
+    if(!fn && !isIn){ row.getCell(13).fill=relleno(XL.amarillo); row.getCell(13).font={bold:true,color:{argb:"FF9A6A00"}}; }
+  });
+
+  // Fila de totales
+  const {i:totI,o:totO,s:totS}=totals();
+  const T=last+1, tr=ws.getRow(T);
+  const rng = c => rows.length ? `${c}${first}:${c}${last}` : `${c}${first}:${c}${first}`;
+  ws.mergeCells(`A${T}:E${T}`);
+  tr.getCell(1).value="TOTALES";
+  tr.getCell(6).value=null;
+  tr.getCell(7).value={formula:`SUM(${rng("G")})`,result:totI};
+  tr.getCell(8).value={formula:`SUM(${rng("H")})`,result:totO};
+  tr.getCell(9).value={formula:`G${T}-H${T}`,result:totS};
+  for(let c=1;c<=13;c++){ const cell=tr.getCell(c); cell.fill=relleno(XL.azulClaro); cell.font={bold:true,color:{argb:XL.azul}}; cell.border=borde; }
+  for(const c of [7,8,9]) tr.getCell(c).numFmt=XL.dinero;
+  tr.getCell(1).alignment={horizontal:"right"};
+  tr.height=22;
+  if(rows.length) ws.autoFilter={from:{row:H,column:1},to:{row:last,column:13}};
+  ws.pageSetup={orientation:"landscape",fitToPage:true,fitToWidth:1,fitToHeight:0,printTitlesRow:`${H}:${H}`};
+
+  /* ===== Hoja Resumen ===== */
+  const R=resumenWs;
+  R.columns=[{width:3},{width:34},{width:18},{width:12},{width:3}];
+  R.mergeCells("B1:D1"); R.getCell("B1").value=nombre; R.getCell("B1").font={bold:true,size:18,color:{argb:XL.azul}};
+  R.mergeCells("B2:D2"); R.getCell("B2").value=`Resumen de cuentas · Corte al ${corte}`; R.getCell("B2").font={color:{argb:"FF6D6A62"}};
+  R.getRow(1).height=28;
+
+  const M="Movimientos!";
+  const inicial=movs.filter(m=>m.tipo==="ingreso"&&m.categoria==="Saldo inicial").reduce((a,m)=>a+Number(m.monto),0);
+  const sinF=movs.filter(m=>m.tipo==="gasto"&&!m.foto_path);
+  const pres=Number(config.presupuesto)||0;
+  let r=4;
+  const titulo=(t)=>{ R.mergeCells(`B${r}:D${r}`); const c=R.getCell(`B${r}`); c.value=t; c.font={bold:true,size:13,color:{argb:"FFFFFFFF"}}; c.fill=relleno(XL.azul); c.alignment={vertical:"middle",indent:1}; R.getRow(r).height=22; r++; };
+  const linea=(label,val,opts={})=>{
+    const a=R.getCell(`B${r}`), b=R.getCell(`C${r}`);
+    a.value=label; b.value=val; b.numFmt=opts.fmt||XL.dinero;
+    a.border=borde; b.border=borde; R.getCell(`D${r}`).border=borde;
+    a.alignment={indent:1};
+    if(opts.fill){ a.fill=relleno(opts.fill); b.fill=relleno(opts.fill); R.getCell(`D${r}`).fill=relleno(opts.fill); }
+    if(opts.bold){ a.font={bold:true,size:opts.size||11,color:{argb:opts.color||"FF1C1B18"}}; b.font={bold:true,size:opts.size||11,color:{argb:opts.color||"FF1C1B18"}}; }
+    else if(opts.color){ b.font={color:{argb:opts.color}}; }
+    if(opts.size) R.getRow(r).height=24;
+    return r++;
+  };
+
+  titulo("Balance general");
+  const rIni=linea("Lo que había al empezar (saldo inicial)", {formula:`SUMIFS(${M}${rng("G")},${M}${rng("D")},"Saldo inicial")`,result:inicial}, {color:XL.verde});
+  const rOtr=linea("Otras entradas durante la misión", {formula:`SUM(${M}${rng("G")})-C${rIni}`,result:totI-inicial}, {color:XL.verde});
+  const rTI =linea("Total entradas", {formula:`C${rIni}+C${rOtr}`,result:totI}, {bold:true,color:XL.verde,fill:XL.verdeClaro});
+  const rTO =linea("Total salidas (gastos)", {formula:`SUM(${M}${rng("H")})`,result:totO}, {bold:true,color:XL.rojo,fill:XL.rojoClaro});
+  linea("LO QUE QUEDÓ (saldo final)", {formula:`C${rTI}-C${rTO}`,result:totS}, {bold:true,size:13,color:XL.azul,fill:XL.azulClaro});
+  r++;
+
+  titulo("Control");
+  linea("Número de movimientos", {formula:`COUNTA(${M}${rng("A")})`,result:movs.length}, {fmt:"0"});
+  if(pres>0){
+    const rP=linea("Presupuesto", pres);
+    linea("Porcentaje del presupuesto gastado", {formula:`IF(C${rP}=0,0,C${rTO}/C${rP})`,result:totO/pres}, {fmt:"0%"});
+    linea("Presupuesto disponible", {formula:`C${rP}-C${rTO}`,result:pres-totO});
+  }
+  linea("Gastos SIN factura (cantidad)", {formula:`COUNTIFS(${M}${rng("C")},"Salida",${M}${rng("M")},"SIN FACTURA")`,result:sinF.length}, {fmt:"0", fill: sinF.length?XL.amarillo:undefined});
+  linea("Gastos SIN factura (valor)", {formula:`SUMIFS(${M}${rng("H")},${M}${rng("M")},"SIN FACTURA")`,result:sinF.reduce((a,m)=>a+Number(m.monto),0)}, {fill: sinF.length?XL.amarillo:undefined});
+  if(sinF.length){
+    R.mergeCells(`B${r}:D${r}`);
+    R.getCell(`B${r}`).value="Faltan facturas de: N° "+sinF.map(m=>pad(m.numero)).sort().join(", N° ");
+    R.getCell(`B${r}`).font={italic:true,color:{argb:"FF9A6A00"}}; R.getCell(`B${r}`).alignment={wrapText:true,indent:1};
+    R.getRow(r).height=Math.min(90, 16*Math.ceil(sinF.length/6)+4); r++;
+  }
+  r++;
+
+  const tablaGrupo=(t, filtroTipo, colGrupo, colValor, total, totalRow)=>{
+    titulo(t);
+    const enc=R.getRow(r);
+    ["","Concepto","Valor","% del total"].forEach((h,k)=>{ if(!k) return; const c=enc.getCell(k+1); c.value=h; c.font={bold:true}; c.fill=relleno(XL.gris); c.border=borde; });
+    r++;
+    const mapa={};
+    for(const m of movs) if(m.tipo===filtroTipo){ const k=(colGrupo==="K"?(m.responsable||"Sin nombre"):m.categoria); mapa[k]=(mapa[k]||0)+Number(m.monto); }
+    const ent=Object.entries(mapa).sort((a,b)=>b[1]-a[1]);
+    if(!ent.length){ R.getCell(`B${r}`).value="Sin movimientos"; R.getCell(`B${r}`).font={italic:true,color:{argb:"FF6D6A62"}}; r+=2; return; }
+    for(const [k,v] of ent){
+      const a=R.getCell(`B${r}`), b=R.getCell(`C${r}`), c=R.getCell(`D${r}`);
+      a.value=k; a.alignment={indent:1};
+      b.value = colGrupo==="K" && k==="Sin nombre"
+        ? {formula:`SUMIFS(${M}${rng(colValor)},${M}${rng("C")},"${filtroTipo==="gasto"?"Salida":"Entrada"}",${M}${rng("K")},"")`,result:v}
+        : {formula:`SUMIFS(${M}${rng(colValor)},${M}${rng(colGrupo)},"${k.replace(/"/g,'""')}")`,result:v};
+      b.numFmt=XL.dinero;
+      c.value={formula:`IF(C${totalRow}=0,0,C${r}/C${totalRow})`,result: total? v/total : 0}; c.numFmt="0.0%";
+      for(const x of [a,b,c]) x.border=borde;
+      r++;
+    }
+    r++;
+  };
+  tablaGrupo("Gastos por categoría","gasto","D","H",totO,rTO);
+  tablaGrupo("Entradas por origen","ingreso","D","G",totI,rTI);
+  tablaGrupo("Gastos por persona que pagó","gasto","K","H",totO,rTO);
+  R.pageSetup={orientation:"portrait",fitToPage:true,fitToWidth:1,fitToHeight:0};
+
+  const buf=await wb.xlsx.writeBuffer();
+  return new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
 }
 function baseName(){ return (slug(config.nombre)||"cuentas-mision")+"-"+today(); }
 function saveBlob(blob,name){
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name;
   document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },2000);
 }
-$("btnCsv").onclick=()=>saveBlob(new Blob([buildCsv()],{type:"text/csv;charset=utf-8"}), baseName()+".csv");
+$("btnCsv").onclick=async()=>{
+  const btn=$("btnCsv"); btn.disabled=true; $("zipMsg").textContent="Armando el Excel...";
+  try{ saveBlob(await buildXlsx(false), baseName()+".xlsx"); $("zipMsg").textContent="Excel listo."; }
+  catch(e){ console.error(e); $("zipMsg").textContent="No se pudo armar el Excel. Revisa tu conexión e intenta otra vez."; }
+  finally{ btn.disabled=false; }
+};
 
 // Marca el número y el valor debajo de la foto
 async function stampImage(blob, m){
@@ -785,7 +969,8 @@ $("btnZip").onclick=async()=>{
   btn.disabled=true;
   try{
     const zip=new JSZip(), base=baseName();
-    zip.file(base+".csv", buildCsv());
+    msg.textContent="Armando el Excel...";
+    zip.file(base+".xlsx", await buildXlsx(true));
     const dir=zip.folder("facturas");
     const conFoto=[...movs].filter(m=>m.foto_path).sort((a,b)=>a.numero-b.numero);
     let n=0, fallas=[];
